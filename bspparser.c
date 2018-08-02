@@ -68,14 +68,19 @@ struct BSPHeader {
     BSPLump_t lumps[HEADER_LUMPS];
 };
 
+void help();
+
 // Annoncers of the map parsers
-void parsePlanes(FILE *, int32_t, int32_t);
-void parseTextures(FILE *, int32_t, int32_t);
-void parseFaces(FILE *, int32_t, int32_t);
+void parsePlanes(   FILE *, int32_t, int32_t);
+void parseTextures( FILE *, int32_t, int32_t);
+void parseFaces(    FILE *, int32_t, int32_t);
 void parseLightmaps(FILE *, int32_t, int32_t);
-void parseVertexes(FILE *, int32_t, int32_t);
-void parseModels(FILE *, int32_t, int32_t);
-void parseTexinfo(FILE *, int32_t, int32_t);
+void parseVertexes( FILE *, int32_t, int32_t);
+void parseModels(   FILE *, int32_t, int32_t);
+void parseTexinfo(  FILE *, int32_t, int32_t);
+
+char Mode = '-';
+char JsonFileName[32];
 
 int main() {
     printf("\n\nBSP Parser\nBy PROPHESSOR (2018)\n\n");
@@ -105,11 +110,27 @@ int main() {
         printf("\n\n");
 
         selectedLump = SELECTOR_DEFAULT_VALUE;
-        printf("Which lump are you selecting? (Enter %d to exit)\n>>> ", SELECTOR_EXIT_VALUE);
-        scanf("%hi", &selectedLump);
-        /*fflush(stdin);*/
-        if(selectedLump == SELECTOR_EXIT_VALUE) break;
-        if(selectedLump == SELECTOR_DEFAULT_VALUE) break;
+        printf("Enter your command here (\"? 0\" for help, \"e 0\" to exit)\n>>> ");
+        scanf("%c %hi", &Mode, &selectedLump);
+        fflush(stdin);
+        if(Mode == 'e') break;
+        if(Mode == '?') {
+            help();
+            continue;
+        }
+        if(Mode != 'v' && Mode != 'j') {
+            printf("Unknown action! Type \"? 0\" for help, or \"e 0\" to exit.\n");
+            continue;
+        }
+
+        if(Mode == 'j') {
+            printf("Enter the name of JSON file lump save to: (for example, \"out.json\")\n>>> ");
+            scanf("%s", &JsonFileName);
+            fflush(stdin);
+            FILE *outfile = fopen(JsonFileName, "w");
+            fprintf(outfile, "{\n\t\"name\": \"HLBSPPARSER Json lump export\",\n");
+            fclose(outfile);
+        }
 
         switch(selectedLump) {
             case LUMP_PLANES:
@@ -133,15 +154,43 @@ int main() {
             case LUMP_MODELS:
                 parseModels(file, bspHeader.lumps[LUMP_MODELS].offset, bspHeader.lumps[LUMP_MODELS].length);
                 break;
-            default:
+            case LUMP_ENTITIES:
+            case LUMP_VISIBILITY:
+            case LUMP_NODES:
+            case LUMP_CLIPNODES:
+            case LUMP_LEAVES:
+            case LUMP_MARKSURFACES:
+            case LUMP_EDGES:
+            case LUMP_SURFEDGES:
                 printf("Doesn't implemented!\n");
-                /*printf("Invalid lump index!\n");*/
                 break;
+            default:
+                printf("Invalid lump index!\n");
+                break;
+        }
+
+        if(Mode == 'j') {
+            FILE *outfile = fopen(JsonFileName, "a");
+            fprintf(outfile, "\t\"version\": 1\n}");
+            fclose(outfile);
+            printf("File %s saved successfully!\n", JsonFileName);
         }
     }
 
     printf("\n\nBye!\n\n");
     return 0;
+}
+
+void help() {
+    printf("Format: <action> <lump number>\n");
+    printf("Actions:\n");
+    printf("\t?     : Show this help message;\n");
+    printf("\te     : Leave the program;\n");
+    printf("\tv     : View the lump;\n");
+    printf("\tj     : Save the lump as JSON file (requires third argument - name of the file);\n");
+    printf("Examples:\n");
+    printf("\tv1 or v 1      : View Planes lump;\n");
+    printf("\te0 or e 9      : Exit;\n");
 }
 
 // ==============
@@ -166,15 +215,32 @@ void parsePlanes(FILE *file, int32_t offset, int32_t length) {
 
     plane_t plane;
 
+    FILE *outfile = Mode == 'j' ? fopen(JsonFileName, "a") : NULL;
+    if(Mode == 'j') {
+        fprintf(outfile, "\t\"planes\": [\n");
+    }
+
     short i = 0;
     for(int off = offset; off < offset + length; off += sizeof(plane)) {
+        if(off != offset && Mode == 'j') fprintf(outfile, ",\n"); // FIXME: Crutche
         fseek(file, off, SEEK_SET);
         fread(&plane, sizeof(plane), 1, file);
         printf(" == Plane #%hi == \n", i++);
-        printf("Plane.offset: %i\n", off);
         printf("Plane.normal: (%f %f %f)\n", plane.normal.x, plane.normal.y, plane.normal.z);
         printf("Plane.dist: %f\n", plane.dist);
         printf("Plane.type: %i\n", plane.type);
+        if(Mode == 'j') {
+            fprintf(outfile, "\t\t{\n");
+            fprintf(outfile, "\t\t\t\"normal\": [%f, %f, %f],\n", plane.normal.x, plane.normal.y, plane.normal.z);
+            fprintf(outfile, "\t\t\t\"dist\": %f,\n", plane.dist);
+            fprintf(outfile, "\t\t\t\"type\": %i\n", plane.type);
+            fprintf(outfile, "\t\t}");
+        }
+    }
+
+    if(Mode == 'j') {
+        fprintf(outfile, "\n\t],\n");
+        fclose(outfile);
     }
 }
 
@@ -203,6 +269,11 @@ void parseTextures(FILE *file, int32_t offset, int32_t length) {
     textureheader_t textureHeader;
     texture_t texture;
 
+    FILE *outfile = Mode == 'j' ? fopen(JsonFileName, "a") : NULL;
+    if(Mode == 'j') {
+        fprintf(outfile, "\t\"textures\": [\n");
+    }
+
     fseek(file, offset, SEEK_SET);
     fread(&textureHeader, sizeof(textureHeader), 1, file);
     printf("%i textures found!\n", textureHeader.numOfTextures);
@@ -210,6 +281,7 @@ void parseTextures(FILE *file, int32_t offset, int32_t length) {
 
     short i = 0;
     for(int off = offset + textureHeader.offsetToTextures; off < offset + length; off += sizeof(texture)) {
+        if(off != offset + textureHeader.offsetToTextures && Mode == 'j') fprintf(outfile, ",\n");
         fseek(file, off, SEEK_SET);
         printf("offset: %i\n", off);
         fread(&texture, sizeof(texture), 1, file);
@@ -218,6 +290,19 @@ void parseTextures(FILE *file, int32_t offset, int32_t length) {
         printf("Texture.width: %i\n", texture.width);
         printf("Texture.height: %i\n", texture.height);
         printf("Texture.offsets: [%i, %i, %i, %i]\n", texture.offsets[0], texture.offsets[1], texture.offsets[2], texture.offsets[3]);
+        if(Mode == 'j') {
+            fprintf(outfile, "\t\t{\n");
+            fprintf(outfile, "\t\t\t\"name\": %s,\n", texture.name);
+            fprintf(outfile, "\t\t\t\"width\": %i,\n", texture.width);
+            fprintf(outfile, "\t\t\t\"height\": %i,\n", texture.height);
+            fprintf(outfile, "\t\t\t\"offsets\": [%i, %i, %i, %i]\n", texture.offsets[0], texture.offsets[1], texture.offsets[2], texture.offsets[3]);
+            fprintf(outfile, "\t\t}");
+        }
+    }
+
+    if(Mode == 'j') {
+        fprintf(outfile, "\n\t],\n");
+        fclose(outfile);
     }
 }
 
@@ -236,12 +321,30 @@ void parseVertexes(FILE *file, int32_t offset, int32_t length) {
 
     vertex_t vertex;
 
+    FILE *outfile = Mode == 'j' ? fopen(JsonFileName, "a") : NULL;
+    if(Mode == 'j') {
+        fprintf(outfile, "\t\"vertices\": [\n");
+    }
+
     short i = 0;
     for(int off = offset; off < offset + length; off += sizeof(vertex)) {
+        if(off != offset && Mode == 'j') fprintf(outfile, ",\n"); // FIXME: Crutche
         fseek(file, off, SEEK_SET);
         fread(&vertex, sizeof(vertex), 1, file);
         printf(" == Vertex #%hi == \n", i++);
         printf("xyz(%hi %hi %hi)\n", vertex.x, vertex.y, vertex.z);
+        if(Mode == 'j') {
+            fprintf(outfile, "\t\t{\n");
+            fprintf(outfile, "\t\t\t\"x\": %i,\n", vertex.x);
+            fprintf(outfile, "\t\t\t\"y\": %i,\n", vertex.y);
+            fprintf(outfile, "\t\t\t\"z\": %i\n", vertex.z);
+            fprintf(outfile, "\t\t}");
+        }
+    }
+
+    if(Mode == 'j') {
+        fprintf(outfile, "\n\t],\n");
+        fclose(outfile);
     }
 }
 
@@ -263,8 +366,14 @@ void parseTexinfo(FILE *file, int32_t offset, int32_t length) {
 
     texinfo_t texinfo;
 
+    FILE *outfile = Mode == 'j' ? fopen(JsonFileName, "a") : NULL;
+    if(Mode == 'j') {
+        fprintf(outfile, "\t\"texinfo\": [\n");
+    }
+
     short i = 0;
     for(int off = offset; off < offset + length; off += sizeof(texinfo)) {
+        if(off != offset && Mode == 'j') fprintf(outfile, ",\n"); // FIXME: Crutche
         fseek(file, off, SEEK_SET);
         fread(&texinfo, sizeof(texinfo), 1, file);
         printf(" == Texinfo #%i == \n", i++);
@@ -274,6 +383,21 @@ void parseTexinfo(FILE *file, int32_t offset, int32_t length) {
         printf("Texinfo.tShift: %f\n",              texinfo.tShift);
         printf("Texinfo.texture: %i\n",             texinfo.texture);
         printf("Texinfo.flags: %i\n",               texinfo.flags);
+        if(Mode == 'j') {
+            fprintf(outfile, "\t\t{\n");
+            fprintf(outfile, "\t\t\t\"s\": [%f, %f, %f],\n",            texinfo.s.x, texinfo.s.y, texinfo.s.z);
+            fprintf(outfile, "\t\t\t\"sShift\": %f,\n",                 texinfo.sShift);
+            fprintf(outfile, "\t\t\t\"t\": [%f %f %f],\n",              texinfo.t.x, texinfo.t.y, texinfo.t.z);
+            fprintf(outfile, "\t\t\t\"tShift\": %f,\n",                 texinfo.tShift);
+            fprintf(outfile, "\t\t\t\"texture\": %i,\n",                texinfo.texture);
+            fprintf(outfile, "\t\t\t\"flags\": %i\n",                   texinfo.flags);
+            fprintf(outfile, "\t\t}");
+        }
+    }
+
+    if(Mode == 'j') {
+        fprintf(outfile, "\n\t],\n");
+        fclose(outfile);
     }
 }
 
@@ -297,8 +421,14 @@ void parseFaces(FILE *file, int32_t offset, int32_t length) {
 
     face_t face;
 
+    FILE *outfile = Mode == 'j' ? fopen(JsonFileName, "a") : NULL;
+    if(Mode == 'j') {
+        fprintf(outfile, "\t\"faces\": [\n");
+    }
+
     short i = 0;
     for(int off = offset; off < offset + length; off += sizeof(face)) {
+        if(off != offset && Mode == 'j') fprintf(outfile, ",\n"); // FIXME: Crutche
         fseek(file, off, SEEK_SET);
         fread(&face, sizeof(face), 1, file);
         printf(" == Face #%i == \n", i++);
@@ -308,6 +438,21 @@ void parseFaces(FILE *file, int32_t offset, int32_t length) {
         printf("Face.texture: %i\n", face.texture);
         printf("Face.lightStyles: [%i %i %i, %i]\n", face.lightStyles[0], face.lightStyles[1], face.lightStyles[2], face.lightStyles[3]);
         printf("Face.lightmapOffset: %i\n", face.lightmapOffset);
+        if(Mode == 'j') {
+            fprintf(outfile, "\t\t{\n");
+            fprintf(outfile, "\t\t\t\"plane\": %i,\n",                     face.plane);
+            fprintf(outfile, "\t\t\t\"planeSide\": %i,\n",                 face.planeSide);
+            fprintf(outfile, "\t\t\t\"firstEdge\": %i,\n",                 face.firstEdge);
+            fprintf(outfile, "\t\t\t\"texture\": %i,\n",                   face.texture);
+            fprintf(outfile, "\t\t\t\"lightStyles\": [%i %i %i, %i],\n",   face.lightStyles[0], face.lightStyles[1], face.lightStyles[2], face.lightStyles[3]);
+            fprintf(outfile, "\t\t\t\"lightmapOffset\": %i\n",             face.lightmapOffset);
+            fprintf(outfile, "\t\t}");
+        }
+    }
+
+    if(Mode == 'j') {
+        fprintf(outfile, "\n\t],\n");
+        fclose(outfile);
     }
 }
 
@@ -326,12 +471,28 @@ void parseLightmaps(FILE *file, int32_t offset, int32_t length) {
 
     lightmap_t lightmap;
 
+    FILE *outfile = Mode == 'j' ? fopen(JsonFileName, "a") : NULL;
+    if(Mode == 'j') {
+        fprintf(outfile, "\t\"lightmaps\": [\n");
+    }
+
     short i = 0;
     for(int off = offset; off < offset + length; off += sizeof(lightmap)) {
+        if(off != offset && Mode == 'j') fprintf(outfile, ",\n"); // FIXME: Crutche
         fseek(file, off, SEEK_SET);
         fread(&lightmap, sizeof(lightmap), 1, file);
         printf(" == Lightmap #%hi == \n", i++);
         printf("rgb(%hi %hi %hi)\n", lightmap.r, lightmap.g, lightmap.b);
+        if(Mode == 'j') {
+            fprintf(outfile, "\t\t{\n");
+            fprintf(outfile, "\t\t\t\"rgb\": [%hi, %hi, %hi]\n", lightmap.r, lightmap.g, lightmap.b);
+            fprintf(outfile, "\t\t}");
+        }
+    }
+
+    if(Mode == 'j') {
+        fprintf(outfile, "\n\t],\n");
+        fclose(outfile);
     }
 }
 
@@ -354,8 +515,14 @@ void parseModels(FILE *file, int32_t offset, int32_t length) {
 
     model_t model;
 
+    FILE *outfile = Mode == 'j' ? fopen(JsonFileName, "a") : NULL;
+    if(Mode == 'j') {
+        fprintf(outfile, "\t\"models\": [\n");
+    }
+
     short i = 0;
     for(int off = offset; off < offset + length; off += sizeof(model)) {
+        if(off != offset && Mode == 'j') fprintf(outfile, ",\n"); // FIXME: Crutche
         fseek(file, off, SEEK_SET);
         fread(&model, sizeof(model), 1, file);
         printf(" == Model #%hi == \n", i++);
@@ -366,5 +533,21 @@ void parseModels(FILE *file, int32_t offset, int32_t length) {
         printf("Model.visLeafs: %i\n", model.visLeafs);
         printf("Model.firstFace: %i\n", model.firstFace);
         printf("Model.faces: %i\n", model.faces);
+        if(Mode == 'j') {
+            fprintf(outfile, "\t\t{\n");
+            fprintf(outfile, "\t\t\t\"boxMin\": [%f, %f, %f],\n", model.boxMin.x, model.boxMin.y, model.boxMin.z);
+            fprintf(outfile, "\t\t\t\"boxMax\": [%f, %f, %f],\n", model.boxMax.x, model.boxMax.y, model.boxMax.z);
+            fprintf(outfile, "\t\t\t\"origin\": [%f, %f, %f],\n", model.origin.x, model.origin.y, model.origin.z);
+            fprintf(outfile, "\t\t\t\"headNodes\": [%i, %i, %i, %i],\n", model.headNodes[0], model.headNodes[1], model.headNodes[2], model.headNodes[3]);
+            fprintf(outfile, "\t\t\t\"visLeafs\": %i,\n", model.visLeafs);
+            fprintf(outfile, "\t\t\t\"firstFace\": %i,\n", model.firstFace);
+            fprintf(outfile, "\t\t\t\"faces\": %i\n", model.faces);
+            fprintf(outfile, "\t\t}");
+        }
+    }
+
+    if(Mode == 'j') {
+        fprintf(outfile, "\n\t],\n");
+        fclose(outfile);
     }
 }
